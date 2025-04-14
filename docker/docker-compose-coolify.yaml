@@ -182,6 +182,7 @@ services:
   # worker service
   # The Celery worker for processing the queue.
   worker:
+    uuid: comsworker
     image: langgenius/dify-api:0.6.16
     restart: always
     environment:
@@ -210,8 +211,8 @@ services:
     image: langgenius/dify-web:1.2.0
     restart: always
     environment:
-      CONSOLE_API_URL: ${CONSOLE_API_URL:-https://api.coms.no/console}
-      APP_API_URL: ${APP_API_URL:-https://api.coms.no/app}
+      CONSOLE_API_URL: ${CONSOLE_API_URL:-}
+      APP_API_URL: ${APP_API_URL:-}
       SENTRY_DSN: ${WEB_SENTRY_DSN:-}
       NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED:-0}
       TEXT_GENERATION_TIMEOUT_MS: ${TEXT_GENERATION_TIMEOUT_MS:-60000}
@@ -254,12 +255,13 @@ services:
     image: redis:6-alpine
     restart: always
     volumes:
-      # Mount the redis data directory to the container.
       - './volumes/redis/data:/data'
-    # Set the redis password when startup redis server.
-    command: ["redis-server", "--requirepass", "$SERVICE_PASSWORD_REDIS"]
+    environment:
+      - REDIS_USERNAME=${REDIS_USERNAME:-}
+      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS:-}
+    command: ["sh", "-c", "redis-server --requirepass $$REDIS_PASSWORD"]
     healthcheck:
-      test: [ "CMD", "redis-cli", "-a", "$SERVICE_PASSWORD_REDIS", "ping" ]
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
 
   # The DifySandbox
   sandbox:
@@ -269,7 +271,7 @@ services:
       # The DifySandbox configurations
       # Make sure you are changing this key for your deployment with a strong key.
       # You can generate a strong key using `openssl rand -base64 42`.
-      API_KEY: ${SANDBOX_API_KEY:-kwoRekoPA6qucACCyCo3P14TQJX2txvyKZ2Pv5FJGZnEyd48LqaOh/uH}
+      API_KEY: ${SANDBOX_API_KEY:-}
       GIN_MODE: ${SANDBOX_GIN_MODE:-release}
       WORKER_TIMEOUT: ${SANDBOX_WORKER_TIMEOUT:-15}
       ENABLE_NETWORK: ${SANDBOX_ENABLE_NETWORK:-true}
@@ -421,30 +423,31 @@ services:
   weaviate:
     image: semitechnologies/weaviate:1.19.0
     profiles:
-      - ''
+      - '' # The empty string is used to indicate the default profile.
       - weaviate
     restart: always
     volumes:
-      # Mount the Weaviate data directory to the con tainer.
+      # Mount the Weaviate data directory to the container.
       - ./volumes/weaviate:/var/lib/weaviate
     environment:
       # The Weaviate configurations
       # You can refer to the [Weaviate](https://weaviate.io/developers/weaviate/config-refs/env-vars) documentation for more information.
       PERSISTENCE_DATA_PATH: ${WEAVIATE_PERSISTENCE_DATA_PATH:-/var/lib/weaviate}
       QUERY_DEFAULTS_LIMIT: ${WEAVIATE_QUERY_DEFAULTS_LIMIT:-25}
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: ${WEAVIATE_AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED:-false}
+      # Enables or disables anonymous access to Weaviate. Default is disabled if not specified.
+      # Specifies the default vectorizer module to be used by Weaviate for vectorizing data.
       DEFAULT_VECTORIZER_MODULE: ${WEAVIATE_DEFAULT_VECTORIZER_MODULE:-}
       CLUSTER_HOSTNAME: ${WEAVIATE_CLUSTER_HOSTNAME:-node1}
+      # Enabling API key authentication restricts access to authorized users only.
       AUTHENTICATION_APIKEY_ENABLED: ${WEAVIATE_AUTHENTICATION_APIKEY_ENABLED:-true}
-      AUTHENTICATION_APIKEY_ALLOWED_KEYS: $SERVICE_PASSWORD_WEAVIATE
-      AUTHENTICATION_APIKEY_USERS: $SERVICE_USER_WEAVIATE
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${WEAVIATE_AUTHENTICATION_APIKEY_ALLOWED_KEYS:-$WEAVIATE_API_KEY}
+      AUTHENTICATION_APIKEY_USERS: ${WEAVIATE_AUTHENTICATION_APIKEY_USERS:-$SERVICE_USER_WEAVIATE}
       AUTHORIZATION_ADMINLIST_ENABLED: ${WEAVIATE_AUTHORIZATION_ADMINLIST_ENABLED:-true}
-      AUTHORIZATION_ADMINLIST_USERS: $SERVICE_USER_WEAVIATE
-    
+      AUTHORIZATION_ADMINLIST_USERS: ${WEAVIATE_AUTHORIZATION_ADMINLIST_USERS:-$SERVICE_USER_WEAVIATE}
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/live"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"] # Use a lighter endpoint if available
+      interval: 1m # Increase interval to reduce load
+      timeout: 5s  # Reduce timeout to minimize resource usage
       retries: 3
       start_period: 40s
 
@@ -452,7 +455,6 @@ networks:
   # create a network between sandbox, api and ssrf_proxy, and can not access outside.
   ssrf_proxy_network:
     driver: bridge
-    internal: true
 
 volumes:
   ssrf_proxy_var_log_squid:
