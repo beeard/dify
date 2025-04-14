@@ -155,7 +155,7 @@ services:
     restart: always
     volumes:
       # Mount the Weaviate data directory to the container.
-      - ${WEAVIATE_HOST_VOLUME:-./volumes/weaviate}:/var/lib/weaviate
+      - ${WEAVIATE_HOST_VOLUME:-$PWD/volumes/weaviate}:/var/lib/weaviate
     env_file:
       - ./middleware.env
     environment:
