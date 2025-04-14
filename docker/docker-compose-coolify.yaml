@@ -45,13 +45,10 @@ x-shared-env: &shared-api-worker-env
   POSTGRES_WORK_MEM: ${POSTGRES_WORK_MEM:-4MB}
   POSTGRES_MAINTENANCE_WORK_MEM: ${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
   POSTGRES_EFFECTIVE_CACHE_SIZE: ${POSTGRES_EFFECTIVE_CACHE_SIZE:-4096MB}
-  REDIS_HOST: ${REDIS_HOST:-redis}
-  REDIS_PORT: ${REDIS_PORT:-6379}
-  REDIS_USERNAME: ${REDIS_USERNAME:-}
-  REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS:-}
-  REDIS_USE_SSL: ${REDIS_USE_SSL:-false}
+  REDIS_HOST: ${REDIS_HOST:-}
+  REDIS_PORT: ${REDIS_PORT:-}
   REDIS_DB: 0
-  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://cacher:${SERVICE_PASSWORD_REDIS}@redis:6379/1}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:@redis:6379/1}
   BROKER_USE_SSL: ${BROKER_USE_SSL:-false}
   WEB_API_CORS_ALLOW_ORIGINS: ${WEB_API_CORS_ALLOW_ORIGINS:-*}
   CONSOLE_CORS_ALLOW_ORIGINS: ${CONSOLE_CORS_ALLOW_ORIGINS:-*}
@@ -158,7 +155,7 @@ services:
     restart: always
     environment:
       SECRET_KEY: $SERVICE_PASSWORD_64_SECRETKEY
-      INIT_PASSWORD: $SERVICE_USER_INITPASSWORD
+      INIT_PASSWORD: 
       # Use the shared environment variables.
       <<: *shared-api-worker-env
       # Startup mode, 'api' starts the API server.
@@ -254,24 +251,25 @@ services:
   redis:
     image: redis:6-alpine
     restart: always
-    volumes:
-      - './volumes/redis/data:/data'
     environment:
-      - REDIS_USERNAME=${REDIS_USERNAME:-}
-      - REDIS_PASSWORD=${SERVICE_PASSWORD_REDIS:-}
-    command: ["sh", "-c", "redis-server --requirepass $$REDIS_PASSWORD"]
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-difyai123456}
+    volumes:
+      # Mount the redis data directory to the container.
+      - ./volumes/redis/data:/data
+    # Set the redis password when startup redis server.
+    command: redis-server --requirepass ${REDIS_PASSWORD:-difyai123456}
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      test: [ 'CMD', 'redis-cli', 'ping' ]
 
   # The DifySandbox
   sandbox:
-    image: langgenius/dify-sandbox:0.2.1
+    image: langgenius/dify-sandbox:0.2.11
     restart: always
     environment:
       # The DifySandbox configurations
       # Make sure you are changing this key for your deployment with a strong key.
       # You can generate a strong key using `openssl rand -base64 42`.
-      API_KEY: ${SANDBOX_API_KEY:-}
+      API_KEY: ${SANDBOX_API_KEY:-dify-sandbox}
       GIN_MODE: ${SANDBOX_GIN_MODE:-release}
       WORKER_TIMEOUT: ${SANDBOX_WORKER_TIMEOUT:-15}
       ENABLE_NETWORK: ${SANDBOX_ENABLE_NETWORK:-true}
@@ -279,129 +277,69 @@ services:
       HTTPS_PROXY: ${SANDBOX_HTTPS_PROXY:-http://ssrf_proxy:3128}
       SANDBOX_PORT: ${SANDBOX_PORT:-8194}
     volumes:
-      - './volumes/sandbox/dependencies:/dependencies'
+      - ./volumes/sandbox/dependencies:/dependencies
+      - ./volumes/sandbox/conf:/conf
+    healthcheck:
+      test: [ 'CMD', 'curl', '-f', 'http://localhost:8194/health' ]
     networks:
       - ssrf_proxy_network
-      - default
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8194/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+
+  # plugin daemon
+  plugin_daemon:
+    image: langgenius/dify-plugin-daemon:0.0.7-local
+    restart: always
+    environment:
+      # Use the shared environment variables.
+      <<: *shared-api-worker-env
+      DB_DATABASE: ${DB_PLUGIN_DATABASE:-dify_plugin}
+      SERVER_PORT: ${PLUGIN_DAEMON_PORT:-5002}
+      SERVER_KEY: ${PLUGIN_DAEMON_KEY:-lYkiYYT6owG+71oLerGzA7GXCgOT++6ovaezWAjpCjf+Sjc3ZtU+qUEi}
+      MAX_PLUGIN_PACKAGE_SIZE: ${PLUGIN_MAX_PACKAGE_SIZE:-52428800}
+      PPROF_ENABLED: ${PLUGIN_PPROF_ENABLED:-false}
+      DIFY_INNER_API_URL: ${PLUGIN_DIFY_INNER_API_URL:-http://api:5001}
+      DIFY_INNER_API_KEY: ${PLUGIN_DIFY_INNER_API_KEY:-QaHbTe77CtuXmsfyhR7+vRjI/+XbV1AaFy691iy+kGDv2Jvy0/eAh8Y1}
+      PLUGIN_REMOTE_INSTALLING_HOST: ${PLUGIN_DEBUGGING_HOST:-0.0.0.0}
+      PLUGIN_REMOTE_INSTALLING_PORT: ${PLUGIN_DEBUGGING_PORT:-5003}
+      PLUGIN_WORKING_PATH: ${PLUGIN_WORKING_PATH:-/app/storage/cwd}
+      FORCE_VERIFYING_SIGNATURE: ${FORCE_VERIFYING_SIGNATURE:-true}
+      PYTHON_ENV_INIT_TIMEOUT: ${PLUGIN_PYTHON_ENV_INIT_TIMEOUT:-120}
+      PLUGIN_MAX_EXECUTION_TIMEOUT: ${PLUGIN_MAX_EXECUTION_TIMEOUT:-600}
+      PIP_MIRROR_URL: ${PIP_MIRROR_URL:-}
+      PLUGIN_STORAGE_TYPE: ${PLUGIN_STORAGE_TYPE:-local}
+      PLUGIN_STORAGE_LOCAL_ROOT: ${PLUGIN_STORAGE_LOCAL_ROOT:-/app/storage}
+      PLUGIN_INSTALLED_PATH: ${PLUGIN_INSTALLED_PATH:-plugin}
+      PLUGIN_PACKAGE_CACHE_PATH: ${PLUGIN_PACKAGE_CACHE_PATH:-plugin_packages}
+      PLUGIN_MEDIA_CACHE_PATH: ${PLUGIN_MEDIA_CACHE_PATH:-assets}
+      PLUGIN_STORAGE_OSS_BUCKET: ${PLUGIN_STORAGE_OSS_BUCKET:-}
+      S3_USE_AWS_MANAGED_IAM: ${PLUGIN_S3_USE_AWS_MANAGED_IAM:-false}
+      S3_ENDPOINT: ${PLUGIN_S3_ENDPOINT:-}
+      S3_USE_PATH_STYLE: ${PLUGIN_S3_USE_PATH_STYLE:-false}
+      AWS_ACCESS_KEY: ${PLUGIN_AWS_ACCESS_KEY:-}
+      PAWS_SECRET_KEY: ${PLUGIN_AWS_SECRET_KEY:-}
+      AWS_REGION: ${PLUGIN_AWS_REGION:-}
+      AZURE_BLOB_STORAGE_CONNECTION_STRING: ${PLUGIN_AZURE_BLOB_STORAGE_CONNECTION_STRING:-}
+      AZURE_BLOB_STORAGE_CONTAINER_NAME: ${PLUGIN_AZURE_BLOB_STORAGE_CONTAINER_NAME:-}
+      TENCENT_COS_SECRET_KEY: ${PLUGIN_TENCENT_COS_SECRET_KEY:-}
+      TENCENT_COS_SECRET_ID: ${PLUGIN_TENCENT_COS_SECRET_ID:-}
+      TENCENT_COS_REGION: ${PLUGIN_TENCENT_COS_REGION:-}
+    ports:
+      - "${EXPOSE_PLUGIN_DEBUGGING_PORT:-5003}:${PLUGIN_DEBUGGING_PORT:-5003}"
+    volumes:
+      - ./volumes/plugin_daemon:/app/storage
+    depends_on:
+      db:
+        condition: service_healthy
 
   # ssrf_proxy server
   # for more information, please refer to
-  # https://docs.dify.ai/learn-more/faq/self-host-faq#id-18.-why-is-ssrf_proxy-needed
+  # https://docs.dify.ai/learn-more/faq/install-faq#id-18.-why-is-ssrf_proxy-needed
   ssrf_proxy:
     image: ubuntu/squid:latest
     restart: always
     volumes:
-      - type: bind
-        source: ./ssrf_proxy/squid.conf.template
-        target: /etc/squid/squid.conf.template
-        read_only: true
-        content: |
-          acl localnet src 0.0.0.1-0.255.255.255	# RFC 1122 "this" network (LAN)
-          acl localnet src 10.0.0.0/8		# RFC 1918 local private network (LAN)
-          acl localnet src 100.64.0.0/10		# RFC 6598 shared address space (CGN)
-          acl localnet src 169.254.0.0/16 	# RFC 3927 link-local (directly plugged) machines
-          acl localnet src 172.16.0.0/12		# RFC 1918 local private network (LAN)
-          acl localnet src 192.168.0.0/16		# RFC 1918 local private network (LAN)
-          acl localnet src fc00::/7       	# RFC 4193 local private network range
-          acl localnet src fe80::/10      	# RFC 4291 link-local (directly plugged) machines
-          acl SSL_ports port 443
-          acl Safe_ports port 80		# http
-          acl Safe_ports port 21		# ftp
-          acl Safe_ports port 443		# https
-          acl Safe_ports port 70		# gopher
-          acl Safe_ports port 210		# wais
-          acl Safe_ports port 1025-65535	# unregistered ports
-          acl Safe_ports port 280		# http-mgmt
-          acl Safe_ports port 488		# gss-http
-          acl Safe_ports port 591		# filemaker
-          acl Safe_ports port 777		# multiling http
-          acl CONNECT method CONNECT
-          http_access deny !Safe_ports
-          http_access deny CONNECT !SSL_ports
-          http_access allow localhost manager
-          http_access deny manager
-          http_access allow localhost
-          include /etc/squid/conf.d/*.conf
-          http_access deny all
-
-          ################################## Proxy Server ################################
-          http_port 3128
-          coredump_dir ${COREDUMP_DIR}
-          refresh_pattern ^ftp:		1440	20%	10080
-          refresh_pattern ^gopher:	1440	0%	1440
-          refresh_pattern -i (/cgi-bin/|\?) 0	0%	0
-          refresh_pattern \/(Packages|Sources)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
-          refresh_pattern \/Release(|\.gpg)$ 0 0% 0 refresh-ims
-          refresh_pattern \/InRelease$ 0 0% 0 refresh-ims
-          refresh_pattern \/(Translation-.*)(|\.bz2|\.gz|\.xz)$ 0 0% 0 refresh-ims
-          refresh_pattern .		0	20%	4320
-
-
-          # cache_dir ufs /var/spool/squid 100 16 256
-          # upstream proxy, set to your own upstream proxy IP to avoid SSRF attacks
-          # cache_peer 172.1.1.1 parent 3128 0 no-query no-digest no-netdb-exchange default 
-
-          ################################## Reverse Proxy To Sandbox ################################
-          http_port 3129 accel vhost
-          cache_peer ${SANDBOX_HOST} parent ${SANDBOX_PORT} 0 no-query originserver
-          acl src_all src all
-          http_access allow src_all
-      - type: bind
-        source: ./ssrf_proxy/docker-entrypoint.sh
-        target: /docker-entrypoint.sh
-        read_only: true
-        content: |
-          #!/bin/bash
-
-          # Modified based on Squid OCI image entrypoint
-
-          # This entrypoint aims to forward the squid logs to stdout to assist users of
-          # common container related tooling (e.g., kubernetes, docker-compose, etc) to
-          # access the service logs.
-
-          # Moreover, it invokes the squid binary, leaving all the desired parameters to
-          # be provided by the "command" passed to the spawned container. If no command
-          # is provided by the user, the default behavior (as per the CMD statement in
-          # the Dockerfile) will be to use Ubuntu's default configuration [1] and run
-          # squid with the "-NYC" options to mimic the behavior of the Ubuntu provided
-          # systemd unit.
-
-          # [1] The default configuration is changed in the Dockerfile to allow local
-          # network connections. See the Dockerfile for further information.
-
-          echo "[ENTRYPOINT] re-create snakeoil self-signed certificate removed in the build process"
-          if [ ! -f /etc/ssl/private/ssl-cert-snakeoil.key ]; then
-              /usr/sbin/make-ssl-cert generate-default-snakeoil --force-overwrite > /dev/null 2>&1
-          fi
-
-          tail -F /var/log/squid/access.log 2>/dev/null &
-          tail -F /var/log/squid/error.log 2>/dev/null &
-          tail -F /var/log/squid/store.log 2>/dev/null &
-          tail -F /var/log/squid/cache.log 2>/dev/null &
-
-          # Replace environment variables in the template and output to the squid.conf
-          echo "[ENTRYPOINT] replacing environment variables in the template"
-          awk '{
-              while(match($0, /\${[A-Za-z_][A-Za-z_0-9]*}/)) {
-                  var = substr($0, RSTART+2, RLENGTH-3)
-                  val = ENVIRON[var]
-                  $0 = substr($0, 1, RSTART-1) val substr($0, RSTART+RLENGTH)
-              }
-              print
-          }' /etc/squid/squid.conf.template > /etc/squid/squid.conf
-
-          /usr/sbin/squid -Nz
-          echo "[ENTRYPOINT] starting squid"
-          /usr/sbin/squid -f /etc/squid/squid.conf -NYC 1
-      - ssrf_proxy_var_log_squid:/var/log/squid
-      - ssrf_proxy_var_spool_squid:/var/spool/squid
-    entrypoint: ["/bin/sh", "/docker-entrypoint.sh"]
+      - ./ssrf_proxy/squid.conf.template:/etc/squid/squid.conf.template
+      - ./ssrf_proxy/docker-entrypoint.sh:/docker-entrypoint-mount.sh
+    entrypoint: [ 'sh', '-c', "cp /docker-entrypoint-mount.sh /docker-entrypoint.sh && sed -i 's/\r$$//' /docker-entrypoint.sh && chmod +x /docker-entrypoint.sh && /docker-entrypoint.sh" ]
     environment:
       # pls clearly modify the squid env vars to fit your network environment.
       HTTP_PORT: ${SSRF_HTTP_PORT:-3128}
@@ -412,44 +350,43 @@ services:
     networks:
       - ssrf_proxy_network
       - default
-    healthcheck:
-      test: ["CMD", "squid", "-k", "check"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
 
   # The Weaviate vector store.
+  # (if used, you need to set VECTOR_STORE to weaviate in the api & worker service.)
   weaviate:
     image: semitechnologies/weaviate:1.19.0
     profiles:
-      - '' # The empty string is used to indicate the default profile.
+      - ''
       - weaviate
     restart: always
     volumes:
-      # Mount the Weaviate data directory to the container.
+      # Mount the Weaviate data directory to the con tainer.
       - ./volumes/weaviate:/var/lib/weaviate
     environment:
       # The Weaviate configurations
       # You can refer to the [Weaviate](https://weaviate.io/developers/weaviate/config-refs/env-vars) documentation for more information.
       PERSISTENCE_DATA_PATH: ${WEAVIATE_PERSISTENCE_DATA_PATH:-/var/lib/weaviate}
       QUERY_DEFAULTS_LIMIT: ${WEAVIATE_QUERY_DEFAULTS_LIMIT:-25}
-      # Enables or disables anonymous access to Weaviate. Default is disabled if not specified.
-      # Specifies the default vectorizer module to be used by Weaviate for vectorizing data.
-      DEFAULT_VECTORIZER_MODULE: ${WEAVIATE_DEFAULT_VECTORIZER_MODULE:-}
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: ${WEAVIATE_AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED:-false}
+      DEFAULT_VECTORIZER_MODULE: ${WEAVIATE_DEFAULT_VECTORIZER_MODULE:-none}
       CLUSTER_HOSTNAME: ${WEAVIATE_CLUSTER_HOSTNAME:-node1}
-      # Enabling API key authentication restricts access to authorized users only.
       AUTHENTICATION_APIKEY_ENABLED: ${WEAVIATE_AUTHENTICATION_APIKEY_ENABLED:-true}
-      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${WEAVIATE_AUTHENTICATION_APIKEY_ALLOWED_KEYS:-$WEAVIATE_API_KEY}
-      AUTHENTICATION_APIKEY_USERS: ${WEAVIATE_AUTHENTICATION_APIKEY_USERS:-$SERVICE_USER_WEAVIATE}
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ${WEAVIATE_AUTHENTICATION_APIKEY_ALLOWED_KEYS:-WVF5YThaHlkYwhGUSmCRgsX3tD5ngdN8pkih}
+      AUTHENTICATION_APIKEY_USERS: ${WEAVIATE_AUTHENTICATION_APIKEY_USERS:-inter@coms.no}
       AUTHORIZATION_ADMINLIST_ENABLED: ${WEAVIATE_AUTHORIZATION_ADMINLIST_ENABLED:-true}
-      AUTHORIZATION_ADMINLIST_USERS: ${WEAVIATE_AUTHORIZATION_ADMINLIST_USERS:-$SERVICE_USER_WEAVIATE}
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/v1/.well-known/ready"] # Use a lighter endpoint if available
-      interval: 1m # Increase interval to reduce load
-      timeout: 5s  # Reduce timeout to minimize resource usage
-      retries: 3
-      start_period: 40s
+      AUTHORIZATION_ADMINLIST_USERS: ${WEAVIATE_AUTHORIZATION_ADMINLIST_USERS:-inter@coms.no}
+
+  # Qdrant vector store.
+  # (if used, you need to set VECTOR_STORE to qdrant in the api & worker service.)
+  qdrant:
+    image: langgenius/qdrant:v1.7.3
+    profiles:
+      - qdrant
+    restart: always
+    volumes:
+      - ./volumes/qdrant:/qdrant/storage
+    environment:
+      QDRANT_API_KEY: ${QDRANT_API_KEY:-difyai123456}
 
 networks:
   # create a network between sandbox, api and ssrf_proxy, and can not access outside.
