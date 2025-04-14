@@ -37,7 +37,7 @@ services:
       # Mount the redis data directory to the container.
       - './volumes/redis/data:/data'
     # Set the redis password when startup redis server.
-    command: redis-server --requirepass '${REDIS_PASSWORD:-ncapp565617}'
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-ncapp565617}"]
     ports:
       - "${EXPOSE_REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -53,7 +53,8 @@ services:
       # Poetry configuration
       POETRY_VERSION: "2.0.1"
       POETRY_HOME: "/opt/poetry"
-      PATH: "/opt/poetry/bin:$PATH"
+      PATH: "/opt/poetry/bin:/dependencies:$PATH"
+      PYTHONPATH: "/dependencies:/conf"
       # The DifySandbox configurations
       # Make sure you are changing this key for your deployment with a strong key.
       # You can generate a strong key using `openssl rand -base64 42`.
@@ -165,12 +166,13 @@ services:
       - ./middleware.env
     environment:
       # The Weaviate configurations
-      # You can refer to the [Weaviate](https://weaviate.io/developers/weaviate/config-refs/env-vars) documentation for more information.
       PERSISTENCE_DATA_PATH: ${WEAVIATE_PERSISTENCE_DATA_PATH:-/var/lib/weaviate}
       QUERY_DEFAULTS_LIMIT: ${WEAVIATE_QUERY_DEFAULTS_LIMIT:-25}
-      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: ${WEAVIATE_AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED:-true}
-      DEFAULT_VECTORIZER_MODULE: ${WEAVIATE_DEFAULT_VECTORIZER_MODULE:-none}
-      CLUSTER_HOSTNAME: ${WEAVIATE_CLUSTER_HOSTNAME:-node1}
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: "true"
+      AUTHENTICATION_APIKEY_ENABLED: "false"
+      AUTHENTICATION_APIKEY_ALLOWED_KEYS: ""
+      DEFAULT_VECTORIZER_MODULE: "none"
+      CLUSTER_HOSTNAME: "node1"
     ports:
       - "${EXPOSE_WEAVIATE_PORT:-8080}:8080"
 
