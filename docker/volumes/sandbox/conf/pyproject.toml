@@ -1,0 +1,8 @@
+[tool.poetry]
+name = "dify-sandbox"
+version = "0.1.0"
+description = "Dify Sandbox Dependencies"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.13"
+requests = "^2.31.0"
