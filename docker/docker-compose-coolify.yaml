@@ -48,10 +48,10 @@ x-shared-env: &shared-api-worker-env
   REDIS_HOST: ${REDIS_HOST:-redis}
   REDIS_PORT: ${REDIS_PORT:-6379}
   REDIS_USERNAME: ${REDIS_USERNAME:-}
-  REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS-}
+  REDIS_PASSWORD: ${SERVICE_PASSWORD_REDIS:-}
   REDIS_USE_SSL: ${REDIS_USE_SSL:-false}
   REDIS_DB: 0
-  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:$SERVICE_PASSWORD_REDIS@redis:6379/1}
+  CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://:${SERVICE_PASSWORD_REDIS}@redis:6379/1}
   BROKER_USE_SSL: ${BROKER_USE_SSL:-false}
   WEB_API_CORS_ALLOW_ORIGINS: ${WEB_API_CORS_ALLOW_ORIGINS:-*}
   CONSOLE_CORS_ALLOW_ORIGINS: ${CONSOLE_CORS_ALLOW_ORIGINS:-*}
@@ -210,8 +210,8 @@ services:
     image: langgenius/dify-web:1.2.0
     restart: always
     environment:
-      CONSOLE_API_URL: ${CONSOLE_API_URL:-https://api.coms.no/console/v1}
-      APP_API_URL: ${APP_API_URL:-https://api.coms.no/app/v1}
+      CONSOLE_API_URL: ${CONSOLE_API_URL:-https://api.coms.no/console}
+      APP_API_URL: ${APP_API_URL:-https://api.coms.no/app}
       SENTRY_DSN: ${WEB_SENTRY_DSN:-}
       NEXT_TELEMETRY_DISABLED: ${NEXT_TELEMETRY_DISABLED:-0}
       TEXT_GENERATION_TIMEOUT_MS: ${TEXT_GENERATION_TIMEOUT_MS:-60000}
